@@ -4,10 +4,12 @@ A comprehensive, interactive JavaFX application that visualizes Minimum Spanning
 
 ## Features
 
-### 1. Intelligent Algorithm Selection
-The application calculates the graph's density ($D = \\frac{2E}{V(V-1)}$) and automatically selects the most efficient algorithm:
-- **Kruskal's Algorithm** (Optimized with DSU): Selected for **sparse** graphs.
-- **Prim's Algorithm** (Optimized with Min-Heap): Selected for **dense** graphs.
+### 1. Benchmark-First Algorithm Selection
+The application no longer relies on a simple density heuristic. When you click **Run MST (Auto)**, the system:
+1. Executes all 3 implemented algorithms in the background simultaneously.
+2. Compares the **total measured operations** (comparisons, heap ops, union-find ops, and key updates).
+3. Selects the absolute winner based on actual measured performance.
+4. Highlights the winner in the performance panel and visualizes its result on the canvas.
 
 ### 2. Implemented Algorithms
 - **Kruskal's Algorithm**: $O(E \\log E)$ using Disjoint Set Union (DSU) with path compression and union by rank.
@@ -28,8 +30,9 @@ The application calculates the graph's density ($D = \\frac{2E}{V(V-1)}$) and au
 
 ### 5. Performance Benchmarking
 Run all three algorithms simultaneously to compare their efficiency. The benchmark dashboard provides:
-- **Wall-clock Time**
+- **Total Operations**: A combined metric of all computational steps, used for selecting the "Winner."
 - **Step-Level Metrics**: Tracks precise comparisons, heap operations, union-find operations, and key updates.
+- **Wall-clock Time**: Real-world execution time (often <1ms for smaller graphs).
 - **Amortized Complexity Analysis**: Dynamically evaluates the theoretical $O(...)$ notation against the actual $V$ and $E$ of your current graph.
 
 ### 6. History Management

@@ -412,21 +412,40 @@ public class MainController {
         if (currentGraph.getVertices().isEmpty()) { showError("No graph loaded."); return; }
         if (!validator.isConnected(currentGraph)) { showError("MST Failure: Graph is not connected"); return; }
 
-        String algo = selector.select(currentGraph);
-        MSTAlgorithm algorithm = "KRUSKAL".equals(algo) ? new KruskalAlgorithm() : new PrimMinHeapAlgorithm();
-        MSTResult result = algorithm.compute(currentGraph);
-        renderer.drawMST(currentGraph, result);
+        // Step 1: Benchmark ALL algorithms first
+        MSTAlgorithm[] algos = { new KruskalAlgorithm(), new PrimMinHeapAlgorithm(), new PrimBasicAlgorithm() };
+        MSTResult[] results = new MSTResult[algos.length];
+        for (int i = 0; i < algos.length; i++) {
+            results[i] = algos[i].compute(currentGraph);
+        }
+
+        // Step 2: Auto-populate benchmark panel so user sees the comparison
+        populateBenchmarkPanel(results);
+
+        // Step 3: Select the most efficient algorithm by total measured operations
+        MSTResult best = results[0];
+        for (MSTResult r : results) {
+            if (totalOps(r) < totalOps(best)) best = r;
+        }
+
+        // Step 4: Draw only the winning MST
+        renderer.drawMST(currentGraph, best);
 
         double density = densityCalc.calculate(currentGraph);
-        algoLabel.setText(selector.explain(currentGraph, density));
+        algoLabel.setText("Winner: " + best.getAlgorithmName() + " (" + totalOps(best) + " ops) | Density: " + String.format("%.4f", density));
 
         // Save to history
-        HistoryItem item = HistoryItem.fromGraph(currentGraph, result, currentInputMethod, density);
+        HistoryItem item = HistoryItem.fromGraph(currentGraph, best, currentInputMethod, density);
         historyManager.save(item);
         updateMatrixDisplay();
 
-        setStatus("MST computed: " + result.getAlgorithmName() + " | Weight=" + result.getTotalWeight()
-                + " | Steps=" + result.getComparisons() + " comparisons");
+        setStatus("Auto-selected: " + best.getAlgorithmName() + " | Weight=" + best.getTotalWeight()
+                + " | " + totalOps(best) + " total ops (fewest of 3)");
+    }
+
+    /** Total measured operations for an MSTResult — used for algorithm comparison. */
+    private long totalOps(MSTResult r) {
+        return r.getComparisons() + r.getHeapOperations() + r.getUnionFindOps() + r.getKeyUpdates();
     }
 
     private void runSpecificMST(String type) {
@@ -528,31 +547,53 @@ public class MainController {
         if (!validator.isConnected(currentGraph)) { showError("MST Failure: Graph is not connected"); return; }
 
         MSTAlgorithm[] algos = { new KruskalAlgorithm(), new PrimMinHeapAlgorithm(), new PrimBasicAlgorithm() };
+        MSTResult[] results = new MSTResult[algos.length];
+        for (int i = 0; i < algos.length; i++) {
+            results[i] = algos[i].compute(currentGraph);
+        }
+        populateBenchmarkPanel(results);
+        setStatus("Benchmark complete — see step metrics & amortized analysis");
+    }
+
+    /**
+     * Populates the Performance Analysis panel with cards for each algorithm result.
+     * Marks the algorithm with the fewest total operations as the WINNER.
+     */
+    private void populateBenchmarkPanel(MSTResult[] results) {
         benchmarkBox.getChildren().clear();
 
         int vCount = currentGraph.getVertices().size();
         int eCount = currentGraph.getEdges().size();
         double density = densityCalc.calculate(currentGraph);
-        String recommended = selector.select(currentGraph);
+
+        // Find winner
+        MSTResult winner = results[0];
+        for (MSTResult r : results) {
+            if (totalOps(r) < totalOps(winner)) winner = r;
+        }
 
         Label header = new Label("Performance Benchmark Results");
         header.setFont(Font.font("Segoe UI", FontWeight.BOLD, 18));
         header.setTextFill(Color.web(GFG_GREEN));
 
-        Label densityInfo = new Label(String.format("Graph: %d vertices, %d edges | Density: %.4f | Recommended: %s",
-                vCount, eCount, density, recommended));
+        Label densityInfo = new Label(String.format("Graph: %d vertices, %d edges | Density: %.4f | Winner: %s (%d ops)",
+                vCount, eCount, density, winner.getAlgorithmName(), totalOps(winner)));
         densityInfo.setTextFill(Color.web(TEXT_SECONDARY));
         densityInfo.setWrapText(true);
 
         benchmarkBox.getChildren().addAll(header, densityInfo, new Separator());
 
-        for (MSTAlgorithm algo : algos) {
-            MSTResult result = algo.compute(currentGraph);
+        for (MSTResult result : results) {
+            boolean isWinner = (totalOps(result) == totalOps(winner)
+                    && result.getAlgorithmName().equals(winner.getAlgorithmName()));
 
             // --- Algorithm Card ---
             VBox card = new VBox(8);
             card.getStyleClass().add("info-card");
             card.setPadding(new Insets(15));
+            if (isWinner) {
+                card.setStyle("-fx-border-color: " + GFG_GREEN + "; -fx-border-width: 2; -fx-border-radius: 8;");
+            }
 
             // Title row
             HBox titleRow = new HBox(12);
@@ -564,10 +605,20 @@ public class MainController {
             badge.getStyleClass().add(result.getAlgorithmName().contains("Kruskal") ? "badge-kruskal" : "badge-prim");
             Region titleSpacer = new Region();
             HBox.setHgrow(titleSpacer, Priority.ALWAYS);
+
+            HBox rightGroup = new HBox(8);
+            rightGroup.setAlignment(Pos.CENTER_RIGHT);
+            if (isWinner) {
+                Label winnerBadge = new Label("\u2705 WINNER");
+                winnerBadge.setFont(Font.font("Segoe UI", FontWeight.BOLD, 13));
+                winnerBadge.setTextFill(Color.web(GFG_GREEN));
+                rightGroup.getChildren().add(winnerBadge);
+            }
             Label weightLabel = new Label("MST Weight: " + result.getTotalWeight());
             weightLabel.setFont(Font.font("Segoe UI", FontWeight.BOLD, 14));
             weightLabel.setTextFill(Color.web(SUCCESS));
-            titleRow.getChildren().addAll(name, badge, titleSpacer, weightLabel);
+            rightGroup.getChildren().add(weightLabel);
+            titleRow.getChildren().addAll(name, badge, titleSpacer, rightGroup);
 
             // Metrics row
             HBox metricsRow = new HBox(12);
@@ -580,6 +631,7 @@ public class MainController {
             if (result.getKeyUpdates() > 0) {
                 metricsRow.getChildren().add(metricChip("Key Updates", result.getKeyUpdates()));
             }
+            metricsRow.getChildren().add(metricChip("Total Ops", totalOps(result)));
             String timeStr = result.getRuntimeMs() == 0 ? "<1 ms" : result.getRuntimeMs() + " ms";
             metricsRow.getChildren().add(metricChip("Wall Time", timeStr));
 
@@ -618,8 +670,6 @@ public class MainController {
         VBox summaryCard = new VBox(6, summaryTitle, summaryText);
         summaryCard.getStyleClass().add("complexity-card");
         benchmarkBox.getChildren().add(summaryCard);
-
-        setStatus("Benchmark complete — see step metrics & amortized analysis");
     }
 
     private VBox metricChip(String label, long value) {
