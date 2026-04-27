@@ -17,9 +17,13 @@ public class PrimMinHeapAlgorithm implements MSTAlgorithm {
     public MSTResult compute(Graph graph) {
         long startTime = System.nanoTime();
 
+        long comparisons = 0;
+        long heapOperations = 0;
+
         List<Vertex> vertices = graph.getVertices();
         if (vertices.isEmpty()) {
-            return new MSTResult("Prim (Min-Heap)", 0, List.of(), List.of(), 0);
+            return new MSTResult("Prim (Min-Heap)", 0, List.of(), List.of(), 0,
+                    0, 0, 0, 0);
         }
 
         // Build adjacency map: vertexId -> list of edges
@@ -42,18 +46,26 @@ public class PrimMinHeapAlgorithm implements MSTAlgorithm {
         // Start from the first vertex
         String startId = vertices.get(0).getId();
         inMST.add(startId);
-        pq.addAll(adjacency.get(startId));
+        for (Edge e : adjacency.get(startId)) {
+            pq.add(e);
+            heapOperations++; // heap insertion
+        }
 
         while (!pq.isEmpty() && inMST.size() < vertices.size()) {
             Edge cheapest = pq.poll();
+            heapOperations++; // heap extraction
+            comparisons++;    // implicit comparison in poll
+
             String srcId = cheapest.getSource().getId();
             String dstId = cheapest.getDestination().getId();
 
             // Determine which end is the new vertex
             String newVertex = null;
+            comparisons++; // membership check
             if (inMST.contains(srcId) && !inMST.contains(dstId)) {
                 newVertex = dstId;
             } else if (inMST.contains(dstId) && !inMST.contains(srcId)) {
+                comparisons++; // second membership check
                 newVertex = srcId;
             }
 
@@ -66,8 +78,10 @@ public class PrimMinHeapAlgorithm implements MSTAlgorithm {
                     String otherEnd = adj.getSource().getId().equals(newVertex)
                             ? adj.getDestination().getId()
                             : adj.getSource().getId();
+                    comparisons++; // checking if other end is in MST
                     if (!inMST.contains(otherEnd)) {
                         pq.add(adj);
+                        heapOperations++; // heap insertion
                     }
                 }
             }
@@ -83,6 +97,7 @@ public class PrimMinHeapAlgorithm implements MSTAlgorithm {
         }
 
         long elapsed = (System.nanoTime() - startTime) / 1_000_000;
-        return new MSTResult("Prim (Min-Heap)", elapsed, mstEdges, excludedEdges, totalWeight);
+        return new MSTResult("Prim (Min-Heap)", elapsed, mstEdges, excludedEdges, totalWeight,
+                comparisons, heapOperations, 0, 0);
     }
 }

@@ -16,12 +16,28 @@ public class KruskalAlgorithm implements MSTAlgorithm {
     private Map<String, String> parent;
     private Map<String, Integer> rank;
 
+    // Step counters
+    private long comparisons;
+    private long unionFindOps;
+
     @Override
     public MSTResult compute(Graph graph) {
         long startTime = System.nanoTime();
 
+        comparisons = 0;
+        unionFindOps = 0;
+
         List<Edge> sortedEdges = new ArrayList<>(graph.getEdges());
-        Collections.sort(sortedEdges);
+
+        // Sort with a counting comparator to track comparisons
+        sortedEdges.sort((a, b) -> {
+            comparisons++;
+            return Double.compare(a.getWeight(), b.getWeight());
+        });
+
+        // Approximate sort operations: E * ceil(log2(E))
+        int edgeCount = sortedEdges.size();
+        long sortOps = edgeCount > 1 ? (long)(edgeCount * Math.ceil(Math.log(edgeCount) / Math.log(2))) : 0;
 
         // Initialize DSU
         parent = new HashMap<>();
@@ -39,6 +55,7 @@ public class KruskalAlgorithm implements MSTAlgorithm {
             String rootSrc = find(edge.getSource().getId());
             String rootDst = find(edge.getDestination().getId());
 
+            comparisons++; // comparing roots for equality
             if (!rootSrc.equals(rootDst)) {
                 mstEdges.add(edge);
                 totalWeight += edge.getWeight();
@@ -49,10 +66,12 @@ public class KruskalAlgorithm implements MSTAlgorithm {
         }
 
         long elapsed = (System.nanoTime() - startTime) / 1_000_000;
-        return new MSTResult("Kruskal", elapsed, mstEdges, excludedEdges, totalWeight);
+        return new MSTResult("Kruskal", elapsed, mstEdges, excludedEdges, totalWeight,
+                comparisons, sortOps, unionFindOps, 0);
     }
 
     private String find(String x) {
+        unionFindOps++;
         if (!parent.get(x).equals(x)) {
             parent.put(x, find(parent.get(x))); // Path compression
         }
@@ -60,6 +79,7 @@ public class KruskalAlgorithm implements MSTAlgorithm {
     }
 
     private void union(String a, String b) {
+        unionFindOps++;
         int rankA = rank.get(a);
         int rankB = rank.get(b);
         if (rankA < rankB) {

@@ -17,9 +17,13 @@ public class PrimBasicAlgorithm implements MSTAlgorithm {
     public MSTResult compute(Graph graph) {
         long startTime = System.nanoTime();
 
+        long comparisons = 0;
+        long keyUpdates = 0;
+
         List<Vertex> vertices = graph.getVertices();
         if (vertices.isEmpty()) {
-            return new MSTResult("Prim (Basic)", 0, List.of(), List.of(), 0);
+            return new MSTResult("Prim (Basic)", 0, List.of(), List.of(), 0,
+                    0, 0, 0, 0);
         }
 
         int n = vertices.size();
@@ -59,6 +63,7 @@ public class PrimBasicAlgorithm implements MSTAlgorithm {
             int u = -1;
             double minKey = Double.MAX_VALUE;
             for (int i = 0; i < n; i++) {
+                comparisons++; // comparison: is this vertex cheaper?
                 if (!inMST[i] && key[i] < minKey) {
                     minKey = key[i];
                     u = i;
@@ -78,9 +83,11 @@ public class PrimBasicAlgorithm implements MSTAlgorithm {
 
             // Update keys of adjacent vertices
             for (int v = 0; v < n; v++) {
+                comparisons++; // comparison: is this edge cheaper than current key?
                 if (!inMST[v] && adjMatrix[u][v] < key[v]) {
                     key[v] = adjMatrix[u][v];
                     parent[v] = u;
+                    keyUpdates++; // key relaxation
                 }
             }
         }
@@ -95,6 +102,7 @@ public class PrimBasicAlgorithm implements MSTAlgorithm {
         }
 
         long elapsed = (System.nanoTime() - startTime) / 1_000_000;
-        return new MSTResult("Prim (Basic)", elapsed, mstEdges, excludedEdges, totalWeight);
+        return new MSTResult("Prim (Basic)", elapsed, mstEdges, excludedEdges, totalWeight,
+                comparisons, 0, 0, keyUpdates);
     }
 }

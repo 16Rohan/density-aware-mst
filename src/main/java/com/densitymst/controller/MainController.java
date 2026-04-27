@@ -56,8 +56,15 @@ public class MainController {
     private TextField edgeField;
     private VBox historyList;
     private VBox benchmarkBox;
+    private ComboBox<String> sampleBox;
+    private Button nextStepBtn;
     private boolean isAddingEdge = false;
     private Vertex edgeStartVertex = null;
+
+    // Step-by-step state
+    private MSTResult stepResult = null;
+    private int stepIndex = 0;
+    private double stepTotalWeight = 0;
 
     public MainController() {
         root = new BorderPane();
@@ -139,6 +146,7 @@ public class MainController {
         clearBtn.setOnAction(e -> {
             currentGraph = new Graph();
             renderer.clear();
+            matrixInput.setText("");
             updateInfoCards();
             setStatus("Graph cleared");
         });
@@ -146,12 +154,13 @@ public class MainController {
         sidebar.getChildren().addAll(addVertexBtn, addEdgeBtn, clearBtn);
         sidebar.getChildren().add(new Separator());
 
-        // --- Matrix Input ---
-        sidebar.getChildren().add(sectionTitle("MATRIX INPUT"));
+        // --- Adjacency Matrix ---
+        sidebar.getChildren().add(sectionTitle("ADJACENCY MATRIX"));
         matrixInput = new TextArea();
         matrixInput.setPromptText("Enter adjacency matrix\n(space-separated rows)\ne.g.:\n0 2 3\n2 0 5\n3 5 0");
-        matrixInput.setPrefRowCount(5);
-        matrixInput.setWrapText(true);
+        matrixInput.setPrefRowCount(6);
+        matrixInput.setWrapText(false);
+        matrixInput.getStyleClass().add("matrix-input");
 
         Button loadMatrixBtn = styledButton("Load Matrix", "btn-primary");
         loadMatrixBtn.setMaxWidth(Double.MAX_VALUE);
@@ -173,12 +182,14 @@ public class MainController {
 
         // --- Sample Graphs ---
         sidebar.getChildren().add(sectionTitle("SAMPLE GRAPHS"));
-        ComboBox<String> sampleBox = new ComboBox<>();
+        sampleBox = new ComboBox<>();
         sampleBox.getItems().addAll("Sample Dense 1", "Sample Dense 2", "Sample Sparse 1", "Sample Sparse 2");
         sampleBox.setPromptText("Select sample...");
         sampleBox.setMaxWidth(Double.MAX_VALUE);
-        sampleBox.setOnAction(e -> loadSample(sampleBox.getValue()));
-        sidebar.getChildren().add(sampleBox);
+        Button loadSampleBtn = styledButton("Load Graph", "btn-primary");
+        loadSampleBtn.setMaxWidth(Double.MAX_VALUE);
+        loadSampleBtn.setOnAction(e -> loadSample(sampleBox.getValue()));
+        sidebar.getChildren().addAll(sampleBox, loadSampleBtn);
         sidebar.getChildren().add(new Separator());
 
         // --- Execute ---
@@ -187,10 +198,31 @@ public class MainController {
         runBtn.setMaxWidth(Double.MAX_VALUE);
         runBtn.setOnAction(e -> runMST());
 
+        Button runKruskalBtn = styledButton("Run Kruskal", "btn-secondary");
+        runKruskalBtn.setMaxWidth(Double.MAX_VALUE);
+        runKruskalBtn.setOnAction(e -> runSpecificMST("KRUSKAL"));
+
+        Button runPrimBtn = styledButton("Run Prim (Both)", "btn-secondary");
+        runPrimBtn.setMaxWidth(Double.MAX_VALUE);
+        runPrimBtn.setOnAction(e -> runSpecificMST("PRIM"));
+
+        Button resetBtn = styledButton("Reset MST", "btn-danger");
+        resetBtn.setMaxWidth(Double.MAX_VALUE);
+        resetBtn.setOnAction(e -> resetMST());
+
+        Button stepBtn = styledButton("Run Step by Step", "btn-secondary");
+        stepBtn.setMaxWidth(Double.MAX_VALUE);
+        stepBtn.setOnAction(e -> startStepByStep());
+
+        nextStepBtn = styledButton("Next Step \u25B6", "btn-primary");
+        nextStepBtn.setMaxWidth(Double.MAX_VALUE);
+        nextStepBtn.setDisable(true);
+        nextStepBtn.setOnAction(e -> advanceStep());
+
         Button benchBtn = styledButton("Benchmark All", "btn-secondary");
         benchBtn.setMaxWidth(Double.MAX_VALUE);
         benchBtn.setOnAction(e -> runBenchmark());
-        sidebar.getChildren().addAll(runBtn, benchBtn);
+        sidebar.getChildren().addAll(runBtn, runKruskalBtn, runPrimBtn, stepBtn, nextStepBtn, resetBtn, benchBtn);
 
         ScrollPane sp = new ScrollPane(sidebar);
         sp.setFitToWidth(true);
@@ -277,7 +309,7 @@ public class MainController {
                         try {
                             double weight = Double.parseDouble(w);
                             currentGraph.addEdge(new Edge(edgeStartVertex, clicked, weight));
-                            renderer.render(); updateInfoCards();
+                            renderer.render(); updateInfoCards(); updateMatrixDisplay();
                             setStatus("Edge added: " + edgeStartVertex.getId() + " -> " + clicked.getId() + " (w=" + weight + ")");
                         } catch (NumberFormatException ex) {
                             showError("Invalid weight value.");
@@ -308,6 +340,7 @@ public class MainController {
         currentInputMethod = "Visual Editor";
         renderer.drawGraph(currentGraph);
         updateInfoCards();
+        updateMatrixDisplay();
         setStatus("Added vertex " + id);
     }
 
@@ -338,6 +371,7 @@ public class MainController {
             currentInputMethod = "Matrix Input";
             renderer.drawGraph(currentGraph);
             updateInfoCards();
+            updateMatrixDisplay();
             setStatus("Loaded " + n + "-vertex graph from matrix");
         } catch (NumberFormatException ex) { showError("Non-numeric value in matrix."); }
     }
@@ -351,6 +385,7 @@ public class MainController {
             currentInputMethod = "Random Generator";
             renderer.drawGraph(currentGraph);
             updateInfoCards();
+            updateMatrixDisplay();
             setStatus("Generated random graph: " + v + " vertices, " + e + " edges");
         } catch (NumberFormatException ex) { showError("Enter valid integer values."); }
           catch (IllegalArgumentException ex) { showError(ex.getMessage()); }
@@ -369,6 +404,7 @@ public class MainController {
         currentInputMethod = "Sample Library";
         renderer.drawGraph(currentGraph);
         updateInfoCards();
+        updateMatrixDisplay();
         setStatus("Loaded: " + name);
     }
 
@@ -387,8 +423,104 @@ public class MainController {
         // Save to history
         HistoryItem item = HistoryItem.fromGraph(currentGraph, result, currentInputMethod, density);
         historyManager.save(item);
+        updateMatrixDisplay();
 
-        setStatus("MST computed: " + result.getAlgorithmName() + " | Weight=" + result.getTotalWeight() + " | Time=" + result.getRuntimeMs() + "ms");
+        setStatus("MST computed: " + result.getAlgorithmName() + " | Weight=" + result.getTotalWeight()
+                + " | Steps=" + result.getComparisons() + " comparisons");
+    }
+
+    private void runSpecificMST(String type) {
+        if (currentGraph.getVertices().isEmpty()) { showError("No graph loaded."); return; }
+        if (!validator.isConnected(currentGraph)) { showError("MST Failure: Graph is not connected"); return; }
+
+        if ("KRUSKAL".equals(type)) {
+            MSTResult result = new KruskalAlgorithm().compute(currentGraph);
+            renderer.drawMST(currentGraph, result);
+            double density = densityCalc.calculate(currentGraph);
+            HistoryItem item = HistoryItem.fromGraph(currentGraph, result, currentInputMethod, density);
+            historyManager.save(item);
+            setStatus("Kruskal MST: Weight=" + result.getTotalWeight()
+                    + " | " + result.getComparisons() + " comparisons");
+        } else {
+            // Run both Prim variants, display Min-Heap result on canvas
+            MSTResult heapResult = new PrimMinHeapAlgorithm().compute(currentGraph);
+            MSTResult basicResult = new PrimBasicAlgorithm().compute(currentGraph);
+            renderer.drawMST(currentGraph, heapResult);
+            double density = densityCalc.calculate(currentGraph);
+            HistoryItem item = HistoryItem.fromGraph(currentGraph, heapResult, currentInputMethod, density);
+            historyManager.save(item);
+            setStatus(String.format("Prim MST: Heap=%s (W=%.0f, %d cmp) | Basic=%s (W=%.0f, %d cmp)",
+                    heapResult.getAlgorithmName(), heapResult.getTotalWeight(), heapResult.getComparisons(),
+                    basicResult.getAlgorithmName(), basicResult.getTotalWeight(), basicResult.getComparisons()));
+        }
+        updateMatrixDisplay();
+    }
+
+    private void resetMST() {
+        if (currentGraph.getVertices().isEmpty()) { setStatus("No graph to reset."); return; }
+        // Clear step-by-step state
+        stepResult = null;
+        stepIndex = 0;
+        stepTotalWeight = 0;
+        nextStepBtn.setDisable(true);
+        // Re-draw graph without MST highlighting — keeps vertices/edges intact
+        renderer.drawGraph(currentGraph);
+        updateInfoCards();
+        setStatus("MST visualization reset — graph preserved");
+    }
+
+    private void startStepByStep() {
+        if (currentGraph.getVertices().isEmpty()) { showError("No graph loaded."); return; }
+        if (!validator.isConnected(currentGraph)) { showError("MST Failure: Graph is not connected"); return; }
+
+        String algo = selector.select(currentGraph);
+        MSTAlgorithm algorithm = "KRUSKAL".equals(algo) ? new KruskalAlgorithm() : new PrimMinHeapAlgorithm();
+        stepResult = algorithm.compute(currentGraph);
+        stepIndex = 0;
+        stepTotalWeight = 0;
+
+        renderer.prepareMSTStepping(currentGraph, stepResult);
+        nextStepBtn.setDisable(false);
+
+        int totalEdges = stepResult.getMstEdges().size();
+        setStatus("Step-by-step: " + stepResult.getAlgorithmName()
+                + " | 0/" + totalEdges + " edges | Click 'Next Step ▶' to begin");
+    }
+
+    private void advanceStep() {
+        if (stepResult == null) return;
+
+        Edge added = renderer.stepNextMSTEdge();
+        if (added == null) {
+            // All edges revealed
+            nextStepBtn.setDisable(true);
+            double density = densityCalc.calculate(currentGraph);
+            HistoryItem item = HistoryItem.fromGraph(currentGraph, stepResult, currentInputMethod, density);
+            historyManager.save(item);
+            setStatus("Step-by-step complete: " + stepResult.getAlgorithmName()
+                    + " | Total Weight=" + stepResult.getTotalWeight());
+            stepResult = null;
+            return;
+        }
+
+        stepIndex++;
+        stepTotalWeight += added.getWeight();
+        int totalEdges = stepResult.getMstEdges().size();
+
+        setStatus(String.format("Step %d/%d: Added edge %s — %s (w=%.0f) | Running total: %.0f",
+                stepIndex, totalEdges,
+                added.getSource().getId(), added.getDestination().getId(),
+                added.getWeight(), stepTotalWeight));
+
+        if (stepIndex >= totalEdges) {
+            nextStepBtn.setDisable(true);
+            double density = densityCalc.calculate(currentGraph);
+            HistoryItem item = HistoryItem.fromGraph(currentGraph, stepResult, currentInputMethod, density);
+            historyManager.save(item);
+            setStatus("Step-by-step complete: " + stepResult.getAlgorithmName()
+                    + " | Total Weight=" + stepResult.getTotalWeight());
+            stepResult = null;
+        }
     }
 
     private void runBenchmark() {
@@ -398,6 +530,8 @@ public class MainController {
         MSTAlgorithm[] algos = { new KruskalAlgorithm(), new PrimMinHeapAlgorithm(), new PrimBasicAlgorithm() };
         benchmarkBox.getChildren().clear();
 
+        int vCount = currentGraph.getVertices().size();
+        int eCount = currentGraph.getEdges().size();
         double density = densityCalc.calculate(currentGraph);
         String recommended = selector.select(currentGraph);
 
@@ -406,7 +540,7 @@ public class MainController {
         header.setTextFill(Color.web(GFG_GREEN));
 
         Label densityInfo = new Label(String.format("Graph: %d vertices, %d edges | Density: %.4f | Recommended: %s",
-                currentGraph.getVertices().size(), currentGraph.getEdges().size(), density, recommended));
+                vCount, eCount, density, recommended));
         densityInfo.setTextFill(Color.web(TEXT_SECONDARY));
         densityInfo.setWrapText(true);
 
@@ -414,34 +548,114 @@ public class MainController {
 
         for (MSTAlgorithm algo : algos) {
             MSTResult result = algo.compute(currentGraph);
-            HBox card = new HBox(20);
+
+            // --- Algorithm Card ---
+            VBox card = new VBox(8);
             card.getStyleClass().add("info-card");
             card.setPadding(new Insets(15));
-            card.setAlignment(Pos.CENTER_LEFT);
 
-            VBox left = new VBox(4);
+            // Title row
+            HBox titleRow = new HBox(12);
+            titleRow.setAlignment(Pos.CENTER_LEFT);
             Label name = new Label(result.getAlgorithmName());
             name.setFont(Font.font("Segoe UI", FontWeight.BOLD, 16));
             name.setTextFill(Color.web(TEXT_PRIMARY));
             Label badge = new Label(result.getAlgorithmName().contains("Kruskal") ? "SPARSE-OPTIMIZED" : "DENSE-OPTIMIZED");
             badge.getStyleClass().add(result.getAlgorithmName().contains("Kruskal") ? "badge-kruskal" : "badge-prim");
-            left.getChildren().addAll(name, badge);
+            Region titleSpacer = new Region();
+            HBox.setHgrow(titleSpacer, Priority.ALWAYS);
+            Label weightLabel = new Label("MST Weight: " + result.getTotalWeight());
+            weightLabel.setFont(Font.font("Segoe UI", FontWeight.BOLD, 14));
+            weightLabel.setTextFill(Color.web(SUCCESS));
+            titleRow.getChildren().addAll(name, badge, titleSpacer, weightLabel);
 
-            VBox right = new VBox(4);
-            right.setAlignment(Pos.CENTER_RIGHT);
-            Label time = new Label(result.getRuntimeMs() + " ms");
-            time.setFont(Font.font("Segoe UI", FontWeight.BOLD, 22));
-            time.setTextFill(Color.web(SUCCESS));
-            Label weight = new Label("MST Weight: " + result.getTotalWeight());
-            weight.setTextFill(Color.web(TEXT_SECONDARY));
-            right.getChildren().addAll(time, weight);
+            // Metrics row
+            HBox metricsRow = new HBox(12);
+            metricsRow.setAlignment(Pos.CENTER_LEFT);
+            metricsRow.getChildren().add(metricChip("Comparisons", result.getComparisons()));
+            metricsRow.getChildren().add(metricChip("Heap/Sort Ops", result.getHeapOperations()));
+            if (result.getUnionFindOps() > 0) {
+                metricsRow.getChildren().add(metricChip("Union-Find Ops", result.getUnionFindOps()));
+            }
+            if (result.getKeyUpdates() > 0) {
+                metricsRow.getChildren().add(metricChip("Key Updates", result.getKeyUpdates()));
+            }
+            String timeStr = result.getRuntimeMs() == 0 ? "<1 ms" : result.getRuntimeMs() + " ms";
+            metricsRow.getChildren().add(metricChip("Wall Time", timeStr));
 
-            Region spacer = new Region();
-            HBox.setHgrow(spacer, Priority.ALWAYS);
-            card.getChildren().addAll(left, spacer, right);
+            // Amortized complexity row
+            String amortized = getAmortizedComplexity(result.getAlgorithmName(), vCount, eCount);
+            Label complexityLabel = new Label("\u23F1 Amortized: " + amortized);
+            complexityLabel.setFont(Font.font("Consolas", FontWeight.BOLD, 13));
+            complexityLabel.setTextFill(Color.web(GFG_GREEN));
+            complexityLabel.setWrapText(true);
+            VBox complexityBox = new VBox(2, complexityLabel);
+            complexityBox.getStyleClass().add("complexity-card");
+
+            card.getChildren().addAll(titleRow, metricsRow, complexityBox);
             benchmarkBox.getChildren().add(card);
         }
-        setStatus("Benchmark complete");
+
+        // Summary comparison
+        benchmarkBox.getChildren().add(new Separator());
+        double logV = Math.ceil(Math.log(Math.max(vCount, 2)) / Math.log(2));
+        double logE = Math.ceil(Math.log(Math.max(eCount, 2)) / Math.log(2));
+        Label summaryTitle = new Label("\u2139 Amortized Complexity Summary");
+        summaryTitle.setFont(Font.font("Segoe UI", FontWeight.BOLD, 15));
+        summaryTitle.setTextFill(Color.web(TEXT_PRIMARY));
+        Label summaryText = new Label(String.format(
+                "For V=%d, E=%d:\n" +
+                "\u2022 Kruskal:  O(E log E) = O(%d\u00B7%.0f) \u2248 %d ops  [DSU \u2248 free via \u03B1(V)]\n" +
+                "\u2022 Prim (Heap): O((V+E) log V) = O((%d+%d)\u00B7%.0f) \u2248 %d ops\n" +
+                "\u2022 Prim (Basic): O(V\u00B2) = O(%d\u00B2) = %d ops",
+                vCount, eCount,
+                eCount, logE, (long)(eCount * logE),
+                vCount, eCount, logV, (long)((vCount + eCount) * logV),
+                vCount, vCount * vCount));
+        summaryText.setFont(Font.font("Consolas", 12));
+        summaryText.setTextFill(Color.web(TEXT_SECONDARY));
+        summaryText.setWrapText(true);
+        VBox summaryCard = new VBox(6, summaryTitle, summaryText);
+        summaryCard.getStyleClass().add("complexity-card");
+        benchmarkBox.getChildren().add(summaryCard);
+
+        setStatus("Benchmark complete — see step metrics & amortized analysis");
+    }
+
+    private VBox metricChip(String label, long value) {
+        return metricChip(label, String.valueOf(value));
+    }
+
+    private VBox metricChip(String label, String value) {
+        VBox chip = new VBox(1);
+        chip.getStyleClass().add("metric-card");
+        Label valLabel = new Label(value);
+        valLabel.setFont(Font.font("Segoe UI", FontWeight.BOLD, 16));
+        valLabel.setTextFill(Color.web(TEXT_PRIMARY));
+        Label nameLabel = new Label(label);
+        nameLabel.setFont(Font.font("Segoe UI", 10));
+        nameLabel.setTextFill(Color.web(TEXT_MUTED));
+        chip.getChildren().addAll(valLabel, nameLabel);
+        return chip;
+    }
+
+    private String getAmortizedComplexity(String algoName, int v, int e) {
+        double logV = Math.ceil(Math.log(Math.max(v, 2)) / Math.log(2));
+        double logE = Math.ceil(Math.log(Math.max(e, 2)) / Math.log(2));
+        if (algoName.contains("Kruskal")) {
+            // Dominated by sort: O(E log E). DSU with path compression + union by rank
+            // is amortized O(E · α(V)) where α ≤ 1 for practical V — effectively free.
+            long sortCost = e > 1 ? (long)(e * logE) : 0;
+            return String.format("O(E log E) = O(%d\u00B7%.0f) \u2248 %d amortized ops  [DSU \u2248 O(E\u00B7\u03B1) \u2248 free]",
+                    e, logE, sortCost);
+        } else if (algoName.contains("Min-Heap")) {
+            // Each vertex extracted from PQ: V·log(V), each edge may cause insertion: E·log(V)
+            long cost = (long)((v + e) * logV);
+            return String.format("O((V+E) log V) = O((%d+%d)\u00B7%.0f) \u2248 %d amortized ops",
+                    v, e, logV, cost);
+        } else {
+            return String.format("O(V\u00B2) = O(%d\u00B2) = %d amortized ops", v, (long)v * v);
+        }
     }
 
     private void refreshHistory() {
@@ -479,6 +693,7 @@ public class MainController {
                 currentInputMethod = "History Reload";
                 renderer.drawGraph(currentGraph);
                 updateInfoCards();
+                updateMatrixDisplay();
                 setStatus("Reloaded graph from history");
             });
 
@@ -501,6 +716,55 @@ public class MainController {
         } else {
             algoLabel.setText("\u2014");
         }
+    }
+
+    /**
+     * Builds an adjacency matrix from the current graph and displays it
+     * in the sidebar matrix TextArea with right-justified columns.
+     */
+    private void updateMatrixDisplay() {
+        List<Vertex> verts = currentGraph.getVertices();
+        int n = verts.size();
+        if (n == 0) {
+            matrixInput.setText("");
+            return;
+        }
+
+        // Map vertex IDs to indices
+        Map<String, Integer> idMap = new HashMap<>();
+        for (int i = 0; i < n; i++) {
+            idMap.put(verts.get(i).getId(), i);
+        }
+
+        // Build matrix
+        int[][] matrix = new int[n][n];
+        for (Edge e : currentGraph.getEdges()) {
+            int si = idMap.get(e.getSource().getId());
+            int di = idMap.get(e.getDestination().getId());
+            int w = (int) e.getWeight();
+            matrix[si][di] = w;
+            matrix[di][si] = w;
+        }
+
+        // Find max width for alignment
+        int maxWidth = 1;
+        for (int i = 0; i < n; i++)
+            for (int j = 0; j < n; j++)
+                maxWidth = Math.max(maxWidth, String.valueOf(matrix[i][j]).length());
+
+        // Format with right-justified columns
+        StringBuilder sb = new StringBuilder();
+        String fmt = "%" + (maxWidth + 1) + "d";
+        for (int i = 0; i < n; i++) {
+            for (int j = 0; j < n; j++) {
+                if (j > 0) sb.append(" ");
+                sb.append(String.format(fmt, matrix[i][j]).stripLeading());
+                // Pad to align (use fixed width)
+            }
+            if (i < n - 1) sb.append("\n");
+        }
+
+        matrixInput.setText(sb.toString());
     }
 
     private void setStatus(String msg) { Platform.runLater(() -> statusLabel.setText(msg)); }

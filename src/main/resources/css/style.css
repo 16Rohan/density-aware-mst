@@ -293,3 +293,37 @@
     -fx-padding: 6 10;
     -fx-font-size: 12px;
 }
+
+/* ---------- Adjacency Matrix TextArea ---------- */
+.matrix-input {
+    -fx-font-family: "Consolas", "Courier New", monospace;
+    -fx-font-size: 13px;
+    -fx-background-color: #f8f9fa; /* bg-secondary */
+    -fx-text-fill: #212529; /* text-primary */
+    -fx-border-color: #d6d8db; /* border-medium */
+    -fx-border-radius: 6;
+    -fx-background-radius: 6;
+    -fx-padding: 10;
+}
+
+.matrix-input:focused {
+    -fx-border-color: #2f8d46; /* gfg-green */
+    -fx-effect: dropshadow(gaussian, rgba(47,141,70,0.2), 6, 0, 0, 0);
+}
+
+/* ---------- Benchmark Metric Cards ---------- */
+.metric-card {
+    -fx-background-color: #f8f9fa; /* bg-secondary */
+    -fx-padding: 8 14;
+    -fx-background-radius: 6;
+    -fx-border-color: #e0e0e0; /* border-light */
+    -fx-border-radius: 6;
+}
+
+.complexity-card {
+    -fx-background-color: #f1f3f5; /* bg-tertiary */
+    -fx-padding: 12 16;
+    -fx-background-radius: 8;
+    -fx-border-color: #d6d8db; /* border-medium */
+    -fx-border-radius: 8;
+}

@@ -140,6 +140,38 @@ public class GraphRenderer {
     }
 
     /**
+     * Prepares for manual step-by-step MST edge reveal.
+     * Sets the result but shows zero MST edges initially.
+     */
+    public void prepareMSTStepping(Graph graph, MSTResult result) {
+        stopMSTAnimation();
+        this.currentGraph = graph;
+        this.currentResult = result;
+        this.animatedMstEdges.clear();
+        settledFrames = 0;
+        if (!simulationActive && graph != null && !graph.getVertices().isEmpty()) {
+            startSimulation();
+        }
+        render();
+    }
+
+    /**
+     * Reveals the next MST edge in step-by-step mode.
+     * @return the edge that was just revealed, or null if all edges are shown.
+     */
+    public Edge stepNextMSTEdge() {
+        if (currentResult == null) return null;
+        List<Edge> allMst = currentResult.getMstEdges();
+        int nextIndex = animatedMstEdges.size();
+        if (nextIndex >= allMst.size()) return null;
+        Edge next = allMst.get(nextIndex);
+        animatedMstEdges.add(next);
+        settledFrames = 0; // re-energize simulation for layout adjustment
+        render();
+        return next;
+    }
+
+    /**
      * Clears everything and stops the simulation.
      */
     public void clear() {
@@ -266,7 +298,15 @@ public class GraphRenderer {
         }
 
         // Attraction along edges + weight-proportional repulsion
-        for (Edge edge : currentGraph.getEdges()) {
+        // When MST is active, only MST edges contribute forces; non-MST edges "lose" their force
+        Set<Edge> forceEdges;
+        if (currentResult != null && !animatedMstEdges.isEmpty()) {
+            forceEdges = new HashSet<>(animatedMstEdges);
+        } else {
+            forceEdges = new HashSet<>(currentGraph.getEdges());
+        }
+
+        for (Edge edge : forceEdges) {
             Vertex vs = edge.getSource();
             Vertex vd = edge.getDestination();
             double dx = vd.getX() - vs.getX();
