@@ -2,7 +2,7 @@
 
 A comprehensive, interactive JavaFX application that visualizes Minimum Spanning Tree (MST) algorithms and intelligently selects the most optimal algorithm based on graph density. It features a real-time force-directed graph rendering engine, in-depth performance analysis with step-level metrics, and a full suite of graph creation tools.
 
-## \u2728 Features
+## Features
 
 ### 1. Intelligent Algorithm Selection
 The application calculates the graph's density ($D = \\frac{2E}{V(V-1)}$) and automatically selects the most efficient algorithm:
@@ -37,7 +37,7 @@ Every MST computation is saved to a session history log, allowing you to instant
 
 ---
 
-## \ud83d\udee0\ufe0f Tech Stack
+## Tech Stack
 
 - **Language**: Java 17
 - **UI Framework**: JavaFX 17
@@ -45,7 +45,7 @@ Every MST computation is saved to a session history log, allowing you to instant
 
 ---
 
-## \ud83d\ude80 Getting Started
+## Getting Started
 
 ### Prerequisites
 - [Java Development Kit (JDK) 17](https://adoptium.net/) or higher.
@@ -70,7 +70,7 @@ Every MST computation is saved to a session history log, allowing you to instant
 
 ---
 
-## \ud83d\udca1 How to Use
+## How to Use
 
 1. **Create a Graph**: 
    - Click **Add Vertex** and click on the canvas to place nodes.
@@ -89,7 +89,7 @@ Every MST computation is saved to a session history log, allowing you to instant
 
 ---
 
-## \ud83d\udcca Project Structure
+## Project Structure
 
 - `com.densitymst.core`: Core algorithm logic, density calculators, and algorithm selectors.
 - `com.densitymst.model`: Data structures representing Graphs, Vertices, Edges, and results.
