@@ -41,7 +41,11 @@ public class PrimMinHeapAlgorithm implements MSTAlgorithm {
         double totalWeight = 0;
 
         // PriorityQueue of edges sorted by weight
-        PriorityQueue<Edge> pq = new PriorityQueue<>();
+        long[] pqComparisons = {0};
+        PriorityQueue<Edge> pq = new PriorityQueue<>((a, b) -> {
+            pqComparisons[0]++;
+            return Double.compare(a.getWeight(), b.getWeight());
+        });
 
         // Start from the first vertex
         String startId = vertices.get(0).getId();
@@ -98,6 +102,6 @@ public class PrimMinHeapAlgorithm implements MSTAlgorithm {
 
         long elapsed = (System.nanoTime() - startTime) / 1_000_000;
         return new MSTResult("Prim (Min-Heap)", elapsed, mstEdges, excludedEdges, totalWeight,
-                comparisons, heapOperations, 0, 0);
+                comparisons + pqComparisons[0], heapOperations, 0, 0);
     }
 }

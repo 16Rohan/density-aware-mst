@@ -404,7 +404,11 @@ public class GraphRenderer {
         mstTimeline = new Timeline();
         mstTimeline.setCycleCount(edges.size());
 
-        KeyFrame kf = new KeyFrame(Duration.millis(350), event -> {
+        // Cap total animation time to 10 seconds
+        double maxTotalTimeMs = 10000.0;
+        double frameDurationMs = Math.min(350.0, maxTotalTimeMs / Math.max(1, edges.size()));
+
+        KeyFrame kf = new KeyFrame(Duration.millis(frameDurationMs), event -> {
             if (index[0] < edges.size()) {
                 animatedMstEdges.add(edges.get(index[0]));
                 index[0]++;

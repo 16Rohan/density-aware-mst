@@ -35,9 +35,8 @@ public class KruskalAlgorithm implements MSTAlgorithm {
             return Double.compare(a.getWeight(), b.getWeight());
         });
 
-        // Approximate sort operations: E * ceil(log2(E))
-        int edgeCount = sortedEdges.size();
-        long sortOps = edgeCount > 1 ? (long)(edgeCount * Math.ceil(Math.log(edgeCount) / Math.log(2))) : 0;
+        // We already track actual comparisons, so no need to double-count theoretical sort ops.
+        long sortOps = 0;
 
         // Initialize DSU
         parent = new HashMap<>();
